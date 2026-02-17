@@ -37,9 +37,19 @@ namespace GincanaPassagensBiblicas.Services
                 return null; // API key not configured — caller will handle absence of analysis
             }
 
-            var url = "v1beta/models/gemini-3-flash-preview:generateContent";
+            var models = new[] { 
+                "gemini-2.0-flash", 
+                "gemini-2.0-flash-lite-preview-02-05",
+                "gemini-1.5-flash",
+                "gemini-1.5-flash-8b",
+                "gemini-1.5-pro"
+            };
 
-            var prompt = $@"Analise a seguinte frase e verifique se é uma referência bíblica VÁLIDA.
+            foreach (var model in models)
+            {
+                var url = $"v1beta/models/{model}:generateContent";
+
+                var prompt = $@"Analise a seguinte frase e verifique se é uma referência bíblica VÁLIDA.
 Retorne APENAS um JSON no seguinte formato, sem explicações adicionais:
 {{
     ""encontrou"": true/false,
@@ -51,76 +61,90 @@ Se a frase não for uma referência bíblica clara ou não existir na Bíblia, r
 
 Frase do usuário: ""{text}"" ";
 
-            var payload = new
-            {
-                contents = new[] {
-                    new { parts = new[] { new { text = prompt } } }
-                }
-            };
-
-            var req = new HttpRequestMessage(HttpMethod.Post, url);
-            req.Headers.Add("x-goog-api-key", _apiKey);
-            req.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-
-            _logger.LogInformation("Sending request to Gemini for text length {Len}", text?.Length ?? 0);
-            var resp = await _http.SendAsync(req);
-            var respText = await resp.Content.ReadAsStringAsync();
-            _logger.LogInformation("Gemini response status {Status}, length {Len}", resp.StatusCode, respText?.Length ?? 0);
-            _logger.LogInformation("Gemini response body: {Body}", respText);
-            if (!resp.IsSuccessStatusCode)
-            {
-                _logger.LogWarning("Gemini request failed: {Status} - {Body}", resp.StatusCode, respText);
-                return null;
-            }
-
-            using var doc = JsonDocument.Parse(respText);
-
-            if (doc.RootElement.TryGetProperty("candidates", out var candidates))
-            {
-                foreach (var c in candidates.EnumerateArray())
+                var payload = new
                 {
-                    if (c.TryGetProperty("content", out var content) && content.TryGetProperty("parts", out var parts))
+                    contents = new[] {
+                        new { parts = new[] { new { text = prompt } } }
+                    }
+                };
+
+                var req = new HttpRequestMessage(HttpMethod.Post, url);
+                req.Headers.Add("x-goog-api-key", _apiKey);
+                req.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+                _logger.LogInformation("Sending request to Gemini ({Model}) for text length {Len}", model, text?.Length ?? 0);
+                var resp = await _http.SendAsync(req);
+                var respText = await resp.Content.ReadAsStringAsync();
+                
+                if (resp.StatusCode == System.Net.HttpStatusCode.TooManyRequests || resp.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                     _logger.LogWarning("Gemini model {Model} returned {Status}. Trying next model...", model, resp.StatusCode);
+                     continue;
+                }
+
+                _logger.LogInformation("Gemini response status {Status}, length {Len}", resp.StatusCode, respText?.Length ?? 0);
+                _logger.LogInformation("Gemini response body: {Body}", respText);
+                
+                if (!resp.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("Gemini request failed: {Status} - {Body}", resp.StatusCode, respText);
+                    return null;
+                }
+
+                using var doc = JsonDocument.Parse(respText!);
+
+                if (doc.RootElement.TryGetProperty("candidates", out var candidates))
+                {
+                    foreach (var c in candidates.EnumerateArray())
                     {
-                        foreach (var part in parts.EnumerateArray())
+                        if (c.TryGetProperty("content", out var content) && content.TryGetProperty("parts", out var parts))
                         {
-                            if (part.TryGetProperty("text", out var t))
+                            foreach (var part in parts.EnumerateArray())
                             {
-                                var textOut = t.GetString() ?? string.Empty;
-                                _logger.LogDebug("Model content text: {TextOut}", textOut.Length > 500 ? textOut.Substring(0, 500) + "..." : textOut);
-                                var json = ExtractJson(textOut);
-                                if (string.IsNullOrEmpty(json))
+                                if (part.TryGetProperty("text", out var t))
                                 {
-                                    _logger.LogWarning("Could not extract JSON from model output; raw text preview: {Preview}", textOut.Length > 200 ? textOut.Substring(0, 200) + "..." : textOut);
-                                    continue;
-                                }
-
-                                try
-                                {
-                                    _logger.LogDebug("Attempting to parse JSON from model output: {JsonLen}", json?.Length ?? 0);
-                                    using var parsed = JsonDocument.Parse(json);
-                                    var pRoot = parsed.RootElement;
-                                    if (pRoot.TryGetProperty("encontrou", out var encontrou))
+                                    var textOut = t.GetString() ?? string.Empty;
+                                    _logger.LogDebug("Model content text: {TextOut}", textOut.Length > 500 ? textOut.Substring(0, 500) + "..." : textOut);
+                                    var json = ExtractJson(textOut);
+                                    if (string.IsNullOrEmpty(json))
                                     {
-                                        if (!encontrou.GetBoolean())
-                                        {
-                                            _logger.LogInformation("Model returned encontrou=false for text: {TextPreview}", text?.Substring(0, Math.Min(80, text.Length)));
-                                            return (null, null);
-                                        }
-
-                                        var passagem = pRoot.TryGetProperty("passagem", out var passEl) ? passEl.GetString() : null;
-                                        var contexto = pRoot.TryGetProperty("contexto", out var ctxEl) ? ctxEl.GetString() : null;
-                                        _logger.LogInformation("Model found passagem: {PassagemPreview}", passagem?.Length > 80 ? passagem.Substring(0, 80) + "..." : passagem);
-                                        return (passagem, contexto);
+                                        _logger.LogWarning("Could not extract JSON from model output; raw text preview: {Preview}", textOut.Length > 200 ? textOut.Substring(0, 200) + "..." : textOut);
+                                        continue;
                                     }
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger.LogWarning(ex, "Failed to parse JSON from model output");
+
+                                    try
+                                    {
+                                        _logger.LogDebug("Attempting to parse JSON from model output: {JsonLen}", json?.Length ?? 0);
+                                        using var parsed = JsonDocument.Parse(json!);
+                                        var pRoot = parsed.RootElement;
+                                        if (pRoot.TryGetProperty("encontrou", out var encontrou))
+                                        {
+                                            if (!encontrou.GetBoolean())
+                                            {
+                                                _logger.LogInformation("Model returned encontrou=false for text: {TextPreview}", text?.Substring(0, Math.Min(80, text.Length)));
+                                                return (null, null);
+                                            }
+
+                                            var passagem = pRoot.TryGetProperty("passagem", out var passEl) ? passEl.GetString() : null;
+                                            var contexto = pRoot.TryGetProperty("contexto", out var ctxEl) ? ctxEl.GetString() : null;
+                                            _logger.LogInformation("Model found passagem: {PassagemPreview}", passagem?.Length > 80 ? passagem.Substring(0, 80) + "..." : passagem);
+                                            return (passagem, contexto);
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _logger.LogWarning(ex, "Failed to parse JSON from model output");
+                                    }
                                 }
                             }
                         }
                     }
                 }
+                
+                // If we got a valid response but couldn't parse it effectively or it was empty candidates, 
+                // we might want to return null or try next. 
+                // For now, if success status code but no valid result, we return null to avoid infinite retry loops on bad prompts.
+                return null;
             }
 
             return null;

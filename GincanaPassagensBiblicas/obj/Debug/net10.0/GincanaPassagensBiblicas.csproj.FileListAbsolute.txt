@@ -187,4 +187,3 @@ C:\dev\Sistema Igreja\GincanaPassagensBiblicas\GincanaPassagensBiblicas\obj\Debu
 C:\dev\Sistema Igreja\GincanaPassagensBiblicas\GincanaPassagensBiblicas\obj\Debug\net10.0\compressed\r9w1mufl9l-{0}-7bt2cgjiuc-7bt2cgjiuc.gz
 C:\dev\Sistema Igreja\GincanaPassagensBiblicas\GincanaPassagensBiblicas\obj\Debug\net10.0\compressed\i1901ftr2x-{0}-kp0ueqs315-kp0ueqs315.gz
 C:\dev\Sistema Igreja\GincanaPassagensBiblicas\GincanaPassagensBiblicas\obj\Debug\net10.0\compressed\6xb9o06z95-{0}-hhkbx76gqu-hhkbx76gqu.gz
-C:\dev\Sistema Igreja\GincanaPassagensBiblicas\GincanaPassagensBiblicas\obj\Debug\net10.0\staticwebassets.upToDateCheck.txt
