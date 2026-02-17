@@ -1,0 +1,10 @@
+wwwroot\app.css
+wwwroot\images\user_5d0a10ca-c94a-454e-bdff-e9b9944f363e.png
+wwwroot\images\user_cc9bed95-e43a-46f8-b1f9-246b6cede64f.png
+Components\Layout\ReconnectModal.razor.js
+C:\Users\Galeno\.nuget\packages\microsoft.aspnetcore.app.internal.assets\10.0.3\build\..\_framework\blazor.web.js
+C:\Users\Galeno\.nuget\packages\microsoft.aspnetcore.app.internal.assets\10.0.3\build\..\_framework\blazor.server.js
+C:\dev\Sistema Igreja\GincanaPassagensBiblicas\GincanaPassagensBiblicas\wwwroot\app.css
+C:\dev\Sistema Igreja\GincanaPassagensBiblicas\GincanaPassagensBiblicas\Components\Layout\ReconnectModal.razor.js
+C:\Users\Galeno\.nuget\packages\microsoft.aspnetcore.app.internal.assets\10.0.3\_framework\blazor.web.js
+C:\Users\Galeno\.nuget\packages\microsoft.aspnetcore.app.internal.assets\10.0.3\_framework\blazor.server.js
