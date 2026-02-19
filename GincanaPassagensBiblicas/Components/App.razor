@@ -19,6 +19,18 @@
     <ReconnectModal />
     <script src="/_content/Radzen.Blazor/Radzen.Blazor.js"></script>
     <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script>
+        window.readFileAsDataURL = async (inputId) => {
+            const input = document.getElementById(inputId);
+            if (!input || !input.files || input.files.length === 0) return null;
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = () => resolve(null);
+                reader.readAsDataURL(input.files[0]);
+            });
+        };
+    </script>
 </body>
 
 </html>

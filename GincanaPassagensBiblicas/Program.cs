@@ -16,14 +16,31 @@ namespace GincanaPassagensBiblicas
             builder.Services.AddRazorComponents()
                 .AddInteractiveServerComponents();
 
+            builder.Services.AddServerSideBlazor().AddHubOptions(options =>
+            {
+                options.EnableDetailedErrors = true;
+                options.MaximumReceiveMessageSize = 32 * 1024 * 1024; // 32MB para aguentar imagens base64
+                options.HandshakeTimeout = TimeSpan.FromSeconds(30);
+                options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+            });
+
             // Configure SQLite database (frases.db)
             var dbPath = Path.Combine(builder.Environment.ContentRootPath, "frases.db");
             builder.Services.AddDbContext<ApplicationDbContext>(options =>
                 options.UseSqlite($"Data Source={dbPath}"));
-            // Register Gemini/AI service with HttpClient
+            // Register AI service (Switch between Gemini and Ollama here)
+            // To use Gemini, uncomment the block below and comment out the Ollama block.
+            /*
             builder.Services.AddHttpClient<GincanaPassagensBiblicas.Services.IGeminiService, GincanaPassagensBiblicas.Services.GeminiService>(client =>
             {
                 client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/");
+            });
+            */
+
+            // To use local Llama (via Ollama), use this block:
+            builder.Services.AddHttpClient<GincanaPassagensBiblicas.Services.IGeminiService, GincanaPassagensBiblicas.Services.OllamaService>(client =>
+            {
+                client.BaseAddress = new Uri("http://localhost:11434/");
             });
 
             var app = builder.Build();

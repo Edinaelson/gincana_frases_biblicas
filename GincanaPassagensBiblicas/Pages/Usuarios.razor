@@ -6,9 +6,11 @@
 @using Radzen.Blazor
 @using System.IO
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
 @inject GincanaPassagensBiblicas.Data.ApplicationDbContext Db
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
 @inject GincanaPassagensBiblicas.Services.IGeminiService Gemini
+@inject ILogger<Usuarios> _logger
 
 <RadzenCard Style="padding:20px; margin:16px;">
     <div style="display:flex; gap:24px;">
@@ -16,8 +18,10 @@
             <RadzenHeading Size="H4">Cadastrar Usuário</RadzenHeading>
             <div style="display:flex; flex-direction:column; gap:8px; max-width:420px;">
                 <RadzenTextBox @bind-Value="novoNome" Name="Nome" Placeholder="Nome" Style="width:100%;" />
-                <div>
-                    <InputFile OnChange="OnInputFileChange" />
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    <input type="file" id="fileInput" accept="image/*" style="display:block;" />
+                    <RadzenButton Text="Anexar Foto Selecionada" Click="@OnInputFileChangeManual" Icon="attach_file" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Small" Style="width:200px;" />
+                    
                     @if (!string.IsNullOrEmpty(novoImagePath))
                     {
                         <div style="margin-top:8px;">
@@ -68,7 +72,9 @@
                                     {
                                         <div style="color:#666; font-size:13px;">Contexto: @f.Contexto</div>
                                     }
-                                    <div style="color:#666; font-size:13px;">Usuário: @f.Usuario?.Nome</div>
+                                    <div style="color:#888; font-size:12px; margin-top:4px;">
+                                        Usuário: <span style="font-weight:600;">@f.Usuario?.Nome</span> | @f.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                    </div>
                                 </div>
                                 <div style="display:flex; gap:8px; align-items:center;">
                                     <RadzenButton ButtonStyle="ButtonStyle.Danger" Icon="delete" Size="ButtonSize.Small" Click="@(async () => await DeleteFrase(f.Id))">Excluir</RadzenButton>
@@ -103,18 +109,28 @@
         await LoadDataAsync();
     }
 
-    private async Task OnInputFileChange(InputFileChangeEventArgs e)
-    {
-        var file = e.File;
-        if (file == null)
-            return;
+    @inject IJSRuntime JS
 
-        using var ms = new MemoryStream();
-        await file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024).CopyToAsync(ms);
-        var bytes = ms.ToArray();
-        var base64 = Convert.ToBase64String(bytes);
-        var dataUrl = $"data:{file.ContentType};base64,{base64}";
-        novoImagePath = dataUrl;
+    private async Task OnInputFileChangeManual()
+    {
+        try 
+        {
+            _logger.LogInformation("Input manual disparado.");
+            var fileData = await JS.InvokeAsync<string>("readFileAsDataURL", "fileInput"); 
+            if (!string.IsNullOrEmpty(fileData))
+            {
+                novoImagePath = fileData;
+                _logger.LogInformation("Imagem carregada via JS: {Len}", fileData.Length);
+            }
+            else 
+            {
+                _logger.LogInformation("Nenhum arquivo retornado pelo JS.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Erro no input manual");
+        }
     }
 
     private bool _disposed;
@@ -255,11 +271,13 @@
 
     private string GetFraseStyle(Frase f)
     {
-        // if invalid, mark border red and background faint red
-        if (f == null) return "padding:8px; border-bottom:1px solid #eee;";
+        if (f == null) return "padding:12px; border-bottom:1px solid #eee; margin-bottom:8px; border-radius:4px;";
+        
+        // Se for inválida: Borda vermelha e fundo avermelhado
         if (!f.IsValid)
-            return "padding:8px; border-bottom:1px solid #eee; border-left:4px solid #e74c3c; background:#fff6f6;";
+            return "padding:12px; border-bottom:1px solid #eee; border-left:6px solid #e74c3c; background:#fff6f6; margin-bottom:8px; border-radius:4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);";
 
-        return "padding:8px; border-bottom:1px solid #eee;";
+        // Se for válida: Borda verde e fundo esverdeado
+        return "padding:12px; border-bottom:1px solid #eee; border-left:6px solid #2ecc71; background:#f0fff4; margin-bottom:8px; border-radius:4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);";
     }
 }
