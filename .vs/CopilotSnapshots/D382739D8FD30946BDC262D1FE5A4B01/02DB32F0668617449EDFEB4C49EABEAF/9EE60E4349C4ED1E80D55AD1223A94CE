@@ -1,0 +1,16 @@
+﻿namespace GincanaPassagensBiblicas.Models
+{
+    public class Frase
+    {
+        public int Id { get; set; }
+        public string Texto { get; set; } = string.Empty;
+
+        // Foreign key
+        public int UsuarioId { get; set; }
+
+        // Navigation property
+        public Usuario? Usuario { get; set; }
+        // Resultado da análise pela IA: true = válida, false = inválida
+        public bool IsValid { get; set; }
+    }
+}

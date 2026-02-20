@@ -1,0 +1,25 @@
+﻿@inherits LayoutComponentBase
+
+<RadzenHeader Style="background:#fff; box-shadow:0 2px 4px rgba(0,0,0,0.06);">
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 16px;">
+        <div style="display:flex; gap:12px; align-items:center;">
+            <RadzenHeading Size="H4">Gincana Passagens Bíblicas</RadzenHeading>
+            <NavLink href="/" class="rz-link" Match="NavLinkMatch.All">Home</NavLink>
+            <NavLink href="/usuarios" class="rz-link">Usuários</NavLink>
+            <NavLink href="/painel" class="rz-link">Painel</NavLink>
+        </div>
+    </div>
+</RadzenHeader>
+
+<main>
+    @Body
+</main>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+}

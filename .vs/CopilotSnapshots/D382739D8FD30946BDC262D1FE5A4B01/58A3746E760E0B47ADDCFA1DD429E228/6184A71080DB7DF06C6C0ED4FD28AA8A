@@ -1,0 +1,10 @@
+﻿using System.Threading.Tasks;
+
+namespace GincanaPassagensBiblicas.Services
+{
+    public interface IGeminiService
+    {
+        // Analyze text and return true if phrase is valid / makes sense
+        Task<bool> AnalyzeAsync(string text);
+    }
+}

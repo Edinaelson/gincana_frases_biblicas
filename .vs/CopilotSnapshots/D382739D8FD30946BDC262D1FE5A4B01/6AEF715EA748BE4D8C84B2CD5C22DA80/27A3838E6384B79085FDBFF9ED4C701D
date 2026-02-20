@@ -1,0 +1,93 @@
+﻿using System.IO;
+using GincanaPassagensBiblicas.Components;
+using GincanaPassagensBiblicas.Data;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace GincanaPassagensBiblicas
+{
+    public class Program
+    {
+        public static void Main(string[] args)
+        {
+            var builder = WebApplication.CreateBuilder(args);
+
+            // Add services to the container.
+            builder.Services.AddRazorComponents()
+                .AddInteractiveServerComponents();
+
+            // Configure SQLite database (frases.db)
+            var dbPath = Path.Combine(builder.Environment.ContentRootPath, "frases.db");
+            builder.Services.AddDbContext<ApplicationDbContext>(options =>
+                options.UseSqlite($"Data Source={dbPath}"));
+            // Register Gemini/AI service with HttpClient
+            builder.Services.AddHttpClient<GincanaPassagensBiblicas.Services.IGeminiService, GincanaPassagensBiblicas.Services.GeminiService>(client =>
+            {
+                client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/");
+            });
+
+            var app = builder.Build();
+
+            // Ensure database file and schema are created
+            using (var scope = app.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                db.Database.EnsureCreated();
+                // If the database was created before adding ImagePath, add the column when missing
+                var conn = db.Database.GetDbConnection();
+                try
+                {
+                    conn.Open();
+                    using (var cmd = conn.CreateCommand())
+                    {
+                        cmd.CommandText = "PRAGMA table_info('Usuarios');";
+                        using (var reader = cmd.ExecuteReader())
+                        {
+                            var hasImagePath = false;
+                            while (reader.Read())
+                            {
+                                if (reader.GetString(1) == "ImagePath")
+                                {
+                                    hasImagePath = true;
+                                    break;
+                                }
+                            }
+
+                            if (!hasImagePath)
+                            {
+                                using (var add = conn.CreateCommand())
+                                {
+                                    add.CommandText = "ALTER TABLE Usuarios ADD COLUMN ImagePath TEXT";
+                                    add.ExecuteNonQuery();
+                                }
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    try { conn.Close(); } catch { }
+                }
+            }
+
+            // Configure the HTTP request pipeline.
+            if (!app.Environment.IsDevelopment())
+            {
+                app.UseExceptionHandler("/Error");
+                // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
+                app.UseHsts();
+            }
+
+            app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+            app.UseHttpsRedirection();
+
+            app.UseAntiforgery();
+
+            app.MapStaticAssets();
+            app.MapRazorComponents<App>()
+                .AddInteractiveServerRenderMode();
+
+            app.Run();
+        }
+    }
+}

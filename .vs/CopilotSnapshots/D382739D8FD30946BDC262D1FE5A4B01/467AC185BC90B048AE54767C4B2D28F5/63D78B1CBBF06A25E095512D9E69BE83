@@ -1,0 +1,55 @@
+﻿using GincanaPassagensBiblicas.Models;
+using Microsoft.EntityFrameworkCore;
+
+namespace GincanaPassagensBiblicas.Data
+{
+    public class ApplicationDbContext : DbContext
+    {
+        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
+        {
+        }
+
+        public DbSet<Usuario> Usuarios { get; set; } = null!;
+        public DbSet<Frase> Frases { get; set; } = null!;
+        public DbSet<Pontuacao> Pontuacoes { get; set; } = null!;
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<Usuario>(entity =>
+            {
+                entity.HasKey(u => u.Id);
+                entity.Property(u => u.Nome).IsRequired();
+                entity.Property(u => u.ImagePath).HasMaxLength(500);
+            });
+
+            modelBuilder.Entity<Frase>(entity =>
+            {
+                entity.HasKey(f => f.Id);
+                entity.Property(f => f.Texto).IsRequired();
+                entity.Property(f => f.IsValid).HasDefaultValue(false);
+                entity.Property(f => f.Passagem).HasMaxLength(2000);
+                entity.Property(f => f.Contexto).HasMaxLength(2000);
+                entity.HasOne(f => f.Usuario)
+                      .WithMany(u => u.Frases)
+                      .HasForeignKey(f => f.UsuarioId)
+                      .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(f => f.Pontuacao)
+                      .WithOne(p => p.Frase)
+                      .HasForeignKey<Pontuacao>(p => p.FraseId)
+                      .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            modelBuilder.Entity<Pontuacao>(entity =>
+            {
+                entity.HasKey(p => p.Id);
+                entity.Property(p => p.Valor).IsRequired();
+                entity.HasOne(p => p.Usuario)
+                      .WithMany(u => u.Pontuacoes)
+                      .HasForeignKey(p => p.UsuarioId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+        }
+    }
+}

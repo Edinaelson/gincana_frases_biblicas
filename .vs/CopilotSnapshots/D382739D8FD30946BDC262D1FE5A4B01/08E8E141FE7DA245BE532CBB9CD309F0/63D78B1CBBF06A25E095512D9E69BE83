@@ -1,0 +1,47 @@
+﻿using GincanaPassagensBiblicas.Models;
+using Microsoft.EntityFrameworkCore;
+
+namespace GincanaPassagensBiblicas.Data
+{
+    public class ApplicationDbContext : DbContext
+    {
+        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
+        {
+        }
+
+        public DbSet<Usuario> Usuarios { get; set; } = null!;
+        public DbSet<Frase> Frases { get; set; } = null!;
+        public DbSet<Pontuacao> Pontuacoes { get; set; } = null!;
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<Usuario>(entity =>
+            {
+                entity.HasKey(u => u.Id);
+                entity.Property(u => u.Nome).IsRequired();
+            });
+
+            modelBuilder.Entity<Frase>(entity =>
+            {
+                entity.HasKey(f => f.Id);
+                entity.Property(f => f.Texto).IsRequired();
+                entity.HasOne(f => f.Usuario)
+                      .WithMany(u => u.Frases)
+                      .HasForeignKey(f => f.UsuarioId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<Pontuacao>(entity =>
+            {
+                entity.HasKey(p => p.Id);
+                entity.Property(p => p.Valor).IsRequired();
+                entity.HasOne(p => p.Usuario)
+                      .WithMany(u => u.Pontuacoes)
+                      .HasForeignKey(p => p.UsuarioId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+        }
+    }
+}

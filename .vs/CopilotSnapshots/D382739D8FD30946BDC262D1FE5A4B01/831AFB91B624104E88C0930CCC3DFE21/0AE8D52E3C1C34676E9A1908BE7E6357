@@ -1,0 +1,229 @@
+﻿@page "/usuarios"
+@using GincanaPassagensBiblicas.Models
+@using Microsoft.EntityFrameworkCore
+@using System.Linq
+@using Radzen
+@using Radzen.Blazor
+@using System.IO
+@using Microsoft.AspNetCore.Components.Forms
+@inject GincanaPassagensBiblicas.Data.ApplicationDbContext Db
+@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
+@inject GincanaPassagensBiblicas.Services.IGeminiService Gemini
+
+<RadzenCard Style="padding:20px; margin:16px;">
+    <div style="display:flex; gap:24px;">
+        <div style="flex:2;">
+            <RadzenHeading Size="H4">Cadastrar Usuário</RadzenHeading>
+            <div style="display:flex; flex-direction:column; gap:8px; max-width:420px;">
+                <RadzenTextBox @bind-Value="novoNome" Name="Nome" Placeholder="Nome" Style="width:100%;" />
+                <div>
+                    <InputFile OnChange="OnInputFileChange" />
+                    @if (!string.IsNullOrEmpty(novoImagePath))
+                    {
+                        <div style="margin-top:8px;">
+                            <img src="@novoImagePath" alt="preview" style="width:96px; height:96px; object-fit:cover; border-radius:8px;" />
+                        </div>
+                    }
+                </div>
+                <RadzenButton Click="@AddUsuario" Text="Adicionar Usuário" Style="width:160px;" />
+            </div>
+
+            <RadzenHeading Size="H4" Style="margin-top:24px;">Cadastrar Frase</RadzenHeading>
+            <div style="display:flex; flex-direction:column; gap:8px; max-width:420px;">
+                <RadzenDropDown @bind-Value="selectedUsuarioId" Data="@usuarios" TextProperty="Nome" ValueProperty="Id" Placeholder="Selecione usuário" Style="width:100%;" />
+                <RadzenTextArea @bind-Value="novoTexto" Placeholder="Texto da frase" Rows="4" Style="width:100%;" />
+                <RadzenButton Click="@AddFrase" Text="Adicionar Frase" Style="width:160px;" />
+            </div>
+        </div>
+
+        <div style="flex:3;">
+            <RadzenHeading Size="H4">Usuários</RadzenHeading>
+            <RadzenDataList Data="@usuarios" TItem="Usuario" Style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px;">
+                <Template Context="u">
+                    <RadzenCard Style="padding:12px; display:flex; align-items:center; gap:12px;">
+                        <img src="@u.ImagePath" alt="@u.Nome" style="width:64px; height:64px; object-fit:cover; border-radius:8px;" />
+                        <div>
+                            <div style="font-weight:600;">@u.Nome</div>
+                            <div style="color:#666;">@GetUserPoints(u.Id) pts</div>
+                        </div>
+                    </RadzenCard>
+                </Template>
+            </RadzenDataList>
+
+            <RadzenHeading Size="H4" Style="margin-top:16px;">Frases</RadzenHeading>
+            <div>
+                @if (frases.Any())
+                {
+                    foreach (var f in frases)
+                    {
+                        <div style="@GetFraseStyle(f)">
+                            <div>@f.Texto</div>
+                            @if (!string.IsNullOrEmpty(f.Passagem))
+                            {
+                                <div style="font-weight:600;">Passagem: @f.Passagem</div>
+                            }
+                            @if (!string.IsNullOrEmpty(f.Contexto))
+                            {
+                                <div style="color:#666; font-size:13px;">Contexto: @f.Contexto</div>
+                            }
+                            <div style="color:#666; font-size:13px;">Usuário: @f.Usuario?.Nome</div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div>Nenhuma frase cadastrada</div>
+                }
+            </div>
+        </div>
+    </div>
+</RadzenCard>
+
+@code {
+    private List<Usuario> usuarios = new();
+    private List<Frase> frases = new();
+    private Dictionary<int,int> pontosPorUsuario = new();
+
+    private string novoNome = string.Empty;
+    private string novoImagePath = string.Empty;
+    private int selectedUsuarioId = 0;
+    private string novoTexto = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task OnInputFileChange(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null)
+            return;
+
+        using var ms = new MemoryStream();
+        await file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024).CopyToAsync(ms);
+        var bytes = ms.ToArray();
+        var base64 = Convert.ToBase64String(bytes);
+        var dataUrl = $"data:{file.ContentType};base64,{base64}";
+        novoImagePath = dataUrl;
+    }
+
+    private async Task LoadDataAsync()
+    {
+        usuarios = await Db.Usuarios.AsNoTracking().ToListAsync();
+        frases = await Db.Frases.Include(f => f.Usuario).AsNoTracking().ToListAsync();
+
+        pontosPorUsuario = await Db.Pontuacoes
+            .GroupBy(p => p.UsuarioId)
+            .Select(g => new { UsuarioId = g.Key, Total = g.Sum(x => x.Valor) })
+            .ToDictionaryAsync(x => x.UsuarioId, x => x.Total);
+
+        // If Gemini not configured, treat all existing phrases as valid so they are not marked red
+        if (!Gemini.IsConfigured)
+        {
+            var invalid = await Db.Frases.Where(x => !x.IsValid).ToListAsync();
+            if (invalid.Any())
+            {
+                foreach (var x in invalid)
+                    x.IsValid = true;
+                Db.Frases.UpdateRange(invalid);
+                await Db.SaveChangesAsync();
+                // reload phrases with updated values
+                frases = await Db.Frases.Include(f => f.Usuario).AsNoTracking().ToListAsync();
+            }
+        }
+    }
+
+    private async Task AddUsuario()
+    {
+        if (string.IsNullOrWhiteSpace(novoNome))
+            return;
+
+        // ensure image is saved to wwwroot/images
+        var savedPath = novoImagePath;
+        var relativePath = string.Empty;
+        if (!string.IsNullOrEmpty(novoImagePath) && novoImagePath.StartsWith("data:"))
+        {
+            // novoImagePath contains base64 data URL; save it
+            var imgBytes = Convert.FromBase64String(novoImagePath.Substring(novoImagePath.IndexOf(',') + 1));
+            var imagesDir = Path.Combine(Env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"), "images");
+            Directory.CreateDirectory(imagesDir);
+            var fileName = $"user_{Guid.NewGuid()}.png";
+            var filePath = Path.Combine(imagesDir, fileName);
+            await File.WriteAllBytesAsync(filePath, imgBytes);
+            relativePath = $"/images/{fileName}";
+            savedPath = relativePath;
+        }
+
+        var u = new Usuario { Nome = novoNome, ImagePath = savedPath };
+        Db.Usuarios.Add(u);
+        await Db.SaveChangesAsync();
+
+        novoNome = string.Empty;
+        novoImagePath = string.Empty;
+
+        await LoadDataAsync();
+    }
+
+    private async Task AddFrase()
+    {
+        if (selectedUsuarioId == 0 || string.IsNullOrWhiteSpace(novoTexto))
+            return;
+
+        var f = new Frase { Texto = novoTexto, UsuarioId = selectedUsuarioId };
+
+        // analyze with Gemini when configured. If not configured, assume phrase is valid
+        bool valid;
+        if (Gemini.IsConfigured)
+        {
+            valid = await Gemini.AnalyzeAsync(novoTexto);
+
+            // attempt to get passagem/contexto via a different call that returns the JSON content
+            var analysis = await Gemini.AnalyzeFullAsync(novoTexto);
+            if (analysis != null)
+            {
+                f.Passagem = analysis.Value.Passagem ?? string.Empty;
+                f.Contexto = analysis.Value.Contexto ?? string.Empty;
+            }
+        }
+        else
+        {
+            valid = true; // when AI is not available, don't mark biblical phrases as invalid
+        }
+
+        f.IsValid = valid;
+
+        Db.Frases.Add(f);
+        await Db.SaveChangesAsync();
+
+        // only award points when AI is configured and validated the phrase
+        if (valid && Gemini.IsConfigured)
+        {
+            var p = new Pontuacao { UsuarioId = selectedUsuarioId, Valor = 10, FraseId = f.Id };
+            Db.Pontuacoes.Add(p);
+            await Db.SaveChangesAsync();
+        }
+
+        novoTexto = string.Empty;
+        selectedUsuarioId = 0;
+
+        // aqui você pode integrar com o serviço Gemini para avaliar a frase e inserir pontuação
+
+        await LoadDataAsync();
+    }
+
+    private int GetUserPoints(int usuarioId)
+    {
+        return pontosPorUsuario.ContainsKey(usuarioId) ? pontosPorUsuario[usuarioId] : 0;
+    }
+
+    private string GetFraseStyle(Frase f)
+    {
+        // if invalid, mark border red and background faint red
+        if (f == null) return "padding:8px; border-bottom:1px solid #eee;";
+        if (!f.IsValid)
+            return "padding:8px; border-bottom:1px solid #eee; border-left:4px solid #e74c3c; background:#fff6f6;";
+
+        return "padding:8px; border-bottom:1px solid #eee;";
+    }
+}

@@ -1,0 +1,105 @@
+﻿@page "/usuarios"
+@using GincanaPassagensBiblicas.Models
+@using Microsoft.EntityFrameworkCore
+@inject GincanaPassagensBiblicas.Data.ApplicationDbContext Db
+
+<h3>Gerenciar Usuários e Frases</h3>
+
+<section style="margin-bottom:24px;">
+    <h4>Cadastrar Usuário</h4>
+    <EditForm OnValidSubmit="AddUsuario">
+        <div>
+            <InputText @bind="novoNome" placeholder="Nome" />
+            <button type="submit">Adicionar Usuário</button>
+        </div>
+    </EditForm>
+</section>
+
+<section style="margin-bottom:24px;">
+    <h4>Cadastrar Frase</h4>
+    <EditForm OnValidSubmit="AddFrase">
+        <div>
+            <InputSelect @bind="selectedUsuarioId">
+                <option value="0">-- selecione o usuário --</option>
+                @foreach (var u in usuarios)
+                {
+                    <option value="@u.Id">@u.Nome</option>
+                }
+            </InputSelect>
+        </div>
+        <div style="margin-top:8px;">
+            <InputTextArea @bind="novoTexto" placeholder="Texto da frase" rows="3" />
+        </div>
+        <div style="margin-top:8px;">
+            <button type="submit">Adicionar Frase</button>
+        </div>
+    </EditForm>
+</section>
+
+<section>
+    <h4>Usuários</h4>
+    <ul>
+        @foreach (var u in usuarios)
+        {
+            <li>@u.Nome (@u.Id)</li>
+        }
+    </ul>
+</section>
+
+<section>
+    <h4>Frases</h4>
+    <ul>
+        @if (frases.Any())
+        {
+            @foreach (var f in frases)
+            {
+                <li>@f.Texto (usuário: @f.Usuario?.Nome ?? "-" )</li>
+            }
+        }
+        else
+        {
+            <li>Nenhuma frase cadastrada</li>
+        }
+    </ul>
+</section>
+
+@code {
+    private List<Usuario> usuarios = new();
+    private List<Frase> frases = new();
+
+    private string novoNome = string.Empty;
+    private int selectedUsuarioId = 0;
+    private string novoTexto = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        usuarios = await Db.Usuarios.AsNoTracking().ToListAsync();
+        frases = await Db.Frases.Include(f => f.Usuario).AsNoTracking().ToListAsync();
+    }
+
+    private async Task AddUsuario()
+    {
+        if (string.IsNullOrWhiteSpace(novoNome))
+            return;
+
+        var u = new Usuario { Nome = novoNome };
+        Db.Usuarios.Add(u);
+        await Db.SaveChangesAsync();
+
+        usuarios = await Db.Usuarios.AsNoTracking().ToListAsync();
+        novoNome = string.Empty;
+    }
+
+    private async Task AddFrase()
+    {
+        if (selectedUsuarioId == 0 || string.IsNullOrWhiteSpace(novoTexto))
+            return;
+
+        var f = new Frase { Texto = novoTexto, UsuarioId = selectedUsuarioId };
+        Db.Frases.Add(f);
+        await Db.SaveChangesAsync();
+
+        frases = await Db.Frases.Include(fr => fr.Usuario).AsNoTracking().ToListAsync();
+        novoTexto = string.Empty;
+    }
+}

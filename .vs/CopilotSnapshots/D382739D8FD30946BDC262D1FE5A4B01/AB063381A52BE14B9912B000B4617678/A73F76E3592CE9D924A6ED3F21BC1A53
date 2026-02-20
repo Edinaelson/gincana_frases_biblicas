@@ -1,0 +1,179 @@
+﻿using System;
+using System.Net.Http;
+using System.Text.Json;
+using System.Threading.Tasks;
+using System.Text;
+
+namespace GincanaPassagensBiblicas.Services
+{
+    // Dummy implementation for now. Replace with real Gemini/OpenAI integration.
+    public class GeminiService : IGeminiService
+    {
+        private readonly HttpClient _http;
+        private readonly string _apiKey;
+
+        public GeminiService(HttpClient http)
+        {
+            _http = http;
+            // Read API key from environment variable GEMINI_API_KEY or app settings
+            _apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY") ?? string.Empty;
+        }
+
+        public async Task<bool> AnalyzeAsync(string text)
+        {
+            if (string.IsNullOrWhiteSpace(_apiKey))
+            {
+                throw new InvalidOperationException("GEMINI_API_KEY not configured.");
+            }
+
+            var url = "v1beta/models/gemini-3-flash-preview:generateContent";
+
+            // build prompt according to user rule
+            var prompt = $@"Analise a seguinte frase e verifique se é uma referência bíblica VÁLIDA.
+Retorne APENAS um JSON no seguinte formato, sem explicações adicionais:
+{{
+    ""encontrou"": true/false,
+    ""passagem"": ""Texto completo do versículo com a referência (Livro Capitulo:Versiculo)"",
+    ""contexto"": ""Breve explicação do contexto teológico ou histórico""
+}}
+
+Se a frase não for uma referência bíblica clara ou não existir na Bíblia, retorne ""encontrou"": false.
+
+Frase do usuário: ""{text}"" ";
+
+            var payload = new
+            {
+                contents = new[] {
+                    new { parts = new[] { new { text = prompt } } }
+                }
+            };
+
+            var req = new HttpRequestMessage(HttpMethod.Post, url);
+            req.Headers.Add("x-goog-api-key", _apiKey);
+            req.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+            var resp = await _http.SendAsync(req);
+            if (!resp.IsSuccessStatusCode)
+            {
+                return false;
+            }
+
+            var respText = await resp.Content.ReadAsStringAsync();
+            var doc = JsonDocument.Parse(respText);
+
+            try
+            {
+                var root = doc.RootElement;
+                if (root.TryGetProperty("candidates", out var candidates))
+                {
+                    foreach (var c in candidates.EnumerateArray())
+                    {
+                        if (c.TryGetProperty("content", out var content) && content.TryGetProperty("text", out var t))
+                        {
+                            var textOut = t.GetString() ?? string.Empty;
+                            // model should return a JSON string per instruction — try parse
+                            try
+                            {
+                                using var parsed = JsonDocument.Parse(textOut);
+                                var pRoot = parsed.RootElement;
+                                if (pRoot.TryGetProperty("encontrou", out var encontrou))
+                                {
+                                    return encontrou.GetBoolean();
+                                }
+
+        public async Task<(string? Passagem, string? Contexto)?> AnalyzeFullAsync(string text)
+        {
+            if (string.IsNullOrWhiteSpace(_apiKey)) 
+            {
+                throw new InvalidOperationException("GEMINI_API_KEY not configured.");
+            }
+
+            var url = "v1beta/models/gemini-3-flash-preview:generateContent";
+
+            var prompt = $@"Analise a seguinte frase e verifique se é uma referência bíblica VÁLIDA.
+Retorne APENAS um JSON no seguinte formato, sem explicações adicionais: 
+{{
+    ""encontrou"": true/false,
+    ""passagem"": ""Texto completo do versículo com a referência (Livro Capitulo:Versiculo)"",
+    ""contexto"": ""Breve explicação do contexto teológico ou histórico""
+}}
+
+Se a frase não for uma referência bíblica clara ou não existir na Bíblia, retorne ""encontrou"": false.
+
+Frase do usuário: ""{text}"" ";
+
+            var payload = new
+            {
+                contents = new[] {
+                    new { parts = new[] { new { text = prompt } } }
+                }
+            };
+
+            var req = new HttpRequestMessage(HttpMethod.Post, url);
+            req.Headers.Add("x-goog-api-key", _apiKey);
+            req.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+            var resp = await _http.SendAsync(req);
+            if (!resp.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var respText = await resp.Content.ReadAsStringAsync();
+            var doc = JsonDocument.Parse(respText);
+
+            try
+            {
+                var root = doc.RootElement;
+                if (root.TryGetProperty("candidates", out var candidates))
+                {
+                    foreach (var c in candidates.EnumerateArray())
+                    {
+                        if (c.TryGetProperty("content", out var content) && content.TryGetProperty("text", out var t))
+                        {
+                            var textOut = t.GetString() ?? string.Empty;
+                            try
+                            {
+                                using var parsed = JsonDocument.Parse(textOut);
+                                var pRoot = parsed.RootElement;
+                                if (pRoot.TryGetProperty("encontrou", out var encontrou))
+                                {
+                                    var encontrouVal = encontrou.GetBoolean();
+                                    if (!encontrouVal) return (null, null);
+
+                                    var passagem = pRoot.TryGetProperty("passagem", out var passEl) ? passEl.GetString() : null;
+                                    var contexto = pRoot.TryGetProperty("contexto", out var ctxEl) ? ctxEl.GetString() : null;
+                                    return (passagem, contexto);
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            return null;
+        }
+                            }
+                            catch
+                            {
+                                // If model returned plain JSON without being wrapped, try to parse outer response
+                                try
+                                {
+                                    using var parsed2 = JsonDocument.Parse(textOut.Trim());
+                                    if (parsed2.RootElement.TryGetProperty("encontrou", out var encontrou2))
+                                        return encontrou2.GetBoolean();
+                                }
+                                catch { }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            return false;
+        }
+    }
+}

@@ -1,0 +1,41 @@
+﻿@inherits LayoutComponentBase
+@inject ApplicationDbContext Db
+
+<header style="padding:12px; border-bottom:1px solid #ddd; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between;">
+    <nav>
+        <NavLink href="/" class="nav-link" Match="NavLinkMatch.All">Home</NavLink>
+        <span style="margin:0 8px;">|</span>
+        <NavLink href="/usuarios" class="nav-link">Usuários</NavLink>
+    </nav>
+
+    <div style="display:flex; gap:8px; align-items:center;">
+        <input @bind="headerNovoNome" placeholder="Novo usuário" />
+        <button type="button" @onclick="AddUsuarioFromHeader">Cadastrar</button>
+    </div>
+</header>
+
+<main>
+    @Body
+</main>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    private string headerNovoNome = string.Empty;
+
+    private async Task AddUsuarioFromHeader()
+    {
+        if (string.IsNullOrWhiteSpace(headerNovoNome))
+            return;
+
+        var u = new Usuario { Nome = headerNovoNome };
+        Db.Usuarios.Add(u);
+        await Db.SaveChangesAsync();
+
+        headerNovoNome = string.Empty;
+    }
+}

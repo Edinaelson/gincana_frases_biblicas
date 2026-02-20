@@ -1,0 +1,132 @@
+﻿using System;
+using System.Net.Http;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using System.Threading.Tasks;
+using System.Text;
+
+namespace GincanaPassagensBiblicas.Services
+{
+    public class GeminiService : IGeminiService
+    {
+        private readonly HttpClient _http;
+        private readonly string _apiKey;
+        private readonly ILogger<GeminiService> _logger;
+
+        public GeminiService(HttpClient http, ILogger<GeminiService> logger)
+        {
+            _http = http;
+            _logger = logger;
+            _apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY") ?? string.Empty;
+            _logger.LogDebug("GeminiService configured: {Configured}", !string.IsNullOrWhiteSpace(_apiKey));
+        }
+
+        public bool IsConfigured => !string.IsNullOrWhiteSpace(_apiKey);
+
+        public async Task<bool> AnalyzeAsync(string text)
+        {
+            var full = await AnalyzeFullAsync(text);
+            return full.HasValue && !string.IsNullOrEmpty(full.Value.Passagem);
+        }
+
+        public async Task<(string? Passagem, string? Contexto)?> AnalyzeFullAsync(string text)
+        {
+            if (string.IsNullOrWhiteSpace(_apiKey))
+            {
+                _logger.LogInformation("GEMINI_API_KEY not configured, skipping analysis.");
+                return null; // API key not configured — caller will handle absence of analysis
+            }
+
+            var url = "v1beta/models/gemini-3-flash-preview:generateContent";
+
+            var prompt = $@"Analise a seguinte frase e verifique se é uma referência bíblica VÁLIDA.
+Retorne APENAS um JSON no seguinte formato, sem explicações adicionais:
+{{
+    ""encontrou"": true/false,
+    ""passagem"": ""Texto completo do versículo com a referência (Livro Capitulo:Versiculo)"",
+    ""contexto"": ""Breve explicação do contexto teológico ou histórico""
+}}
+
+Se a frase não for uma referência bíblica clara ou não existir na Bíblia, retorne ""encontrou"": false.
+
+Frase do usuário: ""{text}"" ";
+
+            var payload = new
+            {
+                contents = new[] {
+                    new { parts = new[] { new { text = prompt } } }
+                }
+            };
+
+            var req = new HttpRequestMessage(HttpMethod.Post, url);
+            req.Headers.Add("x-goog-api-key", _apiKey);
+            req.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+            _logger.LogInformation("Sending request to Gemini for text length {Len}", text?.Length ?? 0);
+            var resp = await _http.SendAsync(req);
+            var respText = await resp.Content.ReadAsStringAsync();
+            _logger.LogInformation("Gemini response status {Status}, length {Len}", resp.StatusCode, respText?.Length ?? 0);
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Gemini request failed: {Status} - {Body}", resp.StatusCode, respText);
+                return null;
+            }
+
+            using var doc = JsonDocument.Parse(respText);
+
+            if (doc.RootElement.TryGetProperty("candidates", out var candidates))
+            {
+                foreach (var c in candidates.EnumerateArray())
+                {
+                    if (c.TryGetProperty("content", out var content) && content.TryGetProperty("text", out var t))
+                    {
+                        var textOut = t.GetString() ?? string.Empty;
+                        var json = ExtractJson(textOut);
+                        if (string.IsNullOrEmpty(json))
+                            continue;
+
+                        try
+                        {
+                            _logger.LogDebug("Attempting to parse JSON from model output: {JsonLen}", json?.Length ?? 0);
+                            using var parsed = JsonDocument.Parse(json);
+                            var pRoot = parsed.RootElement;
+                            if (pRoot.TryGetProperty("encontrou", out var encontrou))
+                            {
+                                if (!encontrou.GetBoolean())
+                                {
+                                    _logger.LogInformation("Model returned encontrou=false for text: {TextPreview}", text?.Substring(0, Math.Min(80, text.Length)));
+                                    return (null, null);
+                                }
+
+                                var passagem = pRoot.TryGetProperty("passagem", out var passEl) ? passEl.GetString() : null;
+                                var contexto = pRoot.TryGetProperty("contexto", out var ctxEl) ? ctxEl.GetString() : null;
+                                _logger.LogInformation("Model found passagem: {PassagemPreview}", passagem?.Length > 80 ? passagem.Substring(0,80) + "..." : passagem);
+                                return (passagem, contexto);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to parse JSON from model output");
+                        }
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static string? ExtractJson(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return null;
+
+            var trimmed = text.Trim();
+            var start = trimmed.IndexOf('{');
+            var end = trimmed.LastIndexOf('}');
+            if (start >= 0 && end > start)
+                return trimmed.Substring(start, end - start + 1);
+
+            return null;
+        }
+    }
+}

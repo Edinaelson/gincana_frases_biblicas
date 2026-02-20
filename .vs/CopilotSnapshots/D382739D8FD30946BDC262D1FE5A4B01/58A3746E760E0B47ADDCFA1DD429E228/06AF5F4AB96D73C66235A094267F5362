@@ -1,0 +1,16 @@
+﻿using System.Threading.Tasks;
+
+namespace GincanaPassagensBiblicas.Services
+{
+    // Dummy implementation for now. Replace with real Gemini/OpenAI integration.
+    public class GeminiService : IGeminiService
+    {
+        public Task<bool> AnalyzeAsync(string text)
+        {
+            // Simple heuristic: consider phrase valid if length > 20 and contains a vowel.
+            var isValid = !string.IsNullOrWhiteSpace(text) && text.Length > 20 &&
+                          (text.IndexOfAny(new char[] { 'a','e','i','o','u','A','E','I','O','U' }) >= 0);
+            return Task.FromResult(isValid);
+        }
+    }
+}

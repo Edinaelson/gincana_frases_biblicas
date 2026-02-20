@@ -1,0 +1,68 @@
+﻿@page "/painel"
+@using GincanaPassagensBiblicas.Models
+@inject GincanaPassagensBiblicas.Data.ApplicationDbContext Db
+
+@using Radzen
+@using Radzen.Blazor
+
+<h3>Gincana de passagens Bíblicas</h3>
+
+<RadzenCard Style="padding:20px; border-radius:12px;">
+    <div style="display:flex; gap:16px; align-items:flex-start;">
+        <div style="flex:3; display:grid; grid-template-columns:repeat(3,1fr); gap:16px;">
+            @foreach (var u in usuarios)
+            {
+                <RadzenCard Style="display:flex; align-items:center; justify-content:space-between; padding:12px; border-radius:12px;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <img src="@u.ImagePath" alt="@u.Nome" style="width:56px; height:56px; object-fit:cover; border-radius:8px;" />
+                        <div>
+                            <div style="font-weight:600;">@u.Nome</div>
+                            <div style="font-size:14px; color:#666;">@GetUserPoints(u.Id) pts</div>
+                        </div>
+                    </div>
+                </RadzenCard>
+            }
+        </div>
+
+        <div style="flex:1; padding:12px; border:1px solid #eee; border-radius:12px;">
+            <h4>Top 3</h4>
+            <ol>
+                @foreach (var top in top3)
+                {
+                    <li style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                        <img src="@top.ImagePath" style="width:40px; height:40px; object-fit:cover; border-radius:6px;" />
+                        <span>@top.Nome</span>
+                        <span style="margin-left:auto; font-weight:600;">@GetUserPoints(top.Id)</span>
+                    </li>
+                }
+            </ol>
+        </div>
+    </div>
+</RadzenCard>
+
+@code {
+    private List<Usuario> usuarios = new();
+    private List<Usuario> top3 = new();
+    private Dictionary<int,int> pontosPorUsuario = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        usuarios = await Db.Usuarios.ToListAsync();
+
+        // calcular pontuações por usuário a partir da tabela Pontuacoes
+        pontosPorUsuario = await Db.Pontuacoes
+            .GroupBy(p => p.UsuarioId)
+            .Select(g => new { UsuarioId = g.Key, Total = g.Sum(x => x.Valor) })
+            .ToDictionaryAsync(x => x.UsuarioId, x => x.Total);
+
+        top3 = usuarios
+            .OrderByDescending(u => pontosPorUsuario.ContainsKey(u.Id) ? pontosPorUsuario[u.Id] : 0)
+            .Take(3)
+            .ToList();
+    }
+
+    private int GetUserPoints(int usuarioId)
+    {
+        return pontosPorUsuario.ContainsKey(usuarioId) ? pontosPorUsuario[usuarioId] : 0;
+    }
+}
