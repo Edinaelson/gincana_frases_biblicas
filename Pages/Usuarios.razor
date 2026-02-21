@@ -9,7 +9,7 @@
 @using Microsoft.JSInterop
 @inject GincanaPassagensBiblicas.Data.ApplicationDbContext Db
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
-@inject GincanaPassagensBiblicas.Services.IGeminiService Gemini
+@inject GincanaPassagensBiblicas.Services.IGroqService Gemini
 @inject ILogger<Usuarios> _logger
 
 <RadzenCard Style="padding:20px; margin:16px;">
@@ -197,27 +197,33 @@
         if (selectedUsuarioId == 0 || string.IsNullOrWhiteSpace(novoTexto))
             return;
 
+        _logger.LogInformation("Iniciando análise da frase: {Texto}", novoTexto);
+
         var f = new Frase { Texto = novoTexto, UsuarioId = selectedUsuarioId, CreatedAt = DateTime.UtcNow };
 
-        // analyze with Gemini when configured. Use full analysis and mark valid only when passagem returned
+        // analyze with Groq when configured
         bool valid = false;
         if (Gemini.IsConfigured)
         {
+            _logger.LogInformation("Groq está configurado. Chamando AnalyzeFullAsync...");
             var analysis = await Gemini.AnalyzeFullAsync(novoTexto);
             if (analysis != null)
             {
                 f.Passagem = analysis.Value.Passagem ?? string.Empty;
                 f.Contexto = analysis.Value.Contexto ?? string.Empty;
                 valid = !string.IsNullOrEmpty(f.Passagem);
+                _logger.LogInformation("Análise concluída. Válida: {Valid}, Passagem: {Passagem}", valid, f.Passagem);
             }
             else
             {
+                _logger.LogWarning("Análise retornou null.");
                 valid = false;
             }
         }
         else
         {
-            valid = true;
+            _logger.LogWarning("Groq NÃO está configurado (API Key ausente).");
+            valid = true; // Se não tiver IA, deixa passar como válido (comportamento atual)
         }
 
         f.IsValid = valid;
@@ -235,8 +241,6 @@
 
         novoTexto = string.Empty;
         selectedUsuarioId = 0;
-
-        // aqui você pode integrar com o serviço Gemini para avaliar a frase e inserir pontuação
 
         if (!_disposed)
             await LoadDataAsync();

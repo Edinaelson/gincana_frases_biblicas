@@ -26,7 +26,7 @@ namespace GincanaPassagensBiblicas.Services
         public string Response { get; set; } = string.Empty;
     }
 
-    public class OllamaService : IGeminiService
+    public class OllamaService : IOllamaService
     {
         private readonly HttpClient _http;
         private readonly ILogger<OllamaService> _logger;
@@ -35,9 +35,7 @@ namespace GincanaPassagensBiblicas.Services
         
         private const string PrimaryNode = "http://192.168.18.251:11434/api/generate";
         private const string SecondaryNode = "http://localhost:11434/api/generate";
-        
-        // Versão quantizada (leve) para o i5 e versão normal para o i7 com GPU
-        private const string RemoteModel = "llama3.1:8b"; 
+        private const string RemoteModel = "llama3.1:8b-instruct-q2_K"; 
         private const string LocalModel = "llama3.1:8b"; 
 
         public OllamaService(HttpClient http, ILogger<OllamaService> logger)
@@ -52,12 +50,6 @@ namespace GincanaPassagensBiblicas.Services
 
         public bool IsConfigured => true;
 
-        public async Task<bool> AnalyzeAsync(string text)
-        {
-            var full = await AnalyzeFullAsync(text);
-            return full.HasValue && !string.IsNullOrEmpty(full.Value.Passagem);
-        }
-
         public async Task<(string? Passagem, string? Contexto)?> AnalyzeFullAsync(string text)
         {
             try
@@ -71,24 +63,18 @@ namespace GincanaPassagensBiblicas.Services
                 var candidates = FindBestMatches(text, 3);
                 if (!candidates.Any()) return null;
 
-                var prompt = $@"Escolha a referência exata entre:
+                var prompt = $@"Escolha a referência exata para: ""{text}"" entre:
 {string.Join("\n", candidates.Select(c => $"- {c.Reference}: {c.Text}"))}
-Frase do usuário: ""{text}""
 Responda APENAS JSON: {{ ""encontrou"": true, ""referencia"": ""Livro Capítulo:Versículo"" }}";
 
                 HttpResponseMessage? response = null;
-
-                // TENTA i5 (Modelo Leve)
                 try {
-                    _logger.LogInformation("Solicitando ao i5 (Llama 3.1 8B Light)...");
                     var payloadRemote = new { model = RemoteModel, prompt = prompt, stream = false, format = "json" };
                     using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(20)); 
                     response = await _http.PostAsync(PrimaryNode, new StringContent(JsonSerializer.Serialize(payloadRemote), Encoding.UTF8, "application/json"), cts.Token);
                 } catch { }
 
-                // TENTA i7 LOCAL (Modelo Full com GPU)
                 if (response == null || !response.IsSuccessStatusCode) {
-                    _logger.LogInformation("Usando i7 Local (Llama 3.1 8B Full + GPU)...");
                     var payloadLocal = new { 
                         model = LocalModel, prompt = prompt, stream = false, format = "json", 
                         options = new { temperature = 0.0, num_predict = 100, num_thread = 8, num_gpu = 35, low_vram = true } 
@@ -112,13 +98,12 @@ Responda APENAS JSON: {{ ""encontrou"": true, ""referencia"": ""Livro Capítulo:
                     return (matchFinal.Reference + " - " + matchFinal.Text, "");
                 }
             }
-            catch (Exception ex) { _logger.LogError(ex, "Erro no RAG"); }
+            catch (Exception ex) { _logger.LogError(ex, "Erro RAG"); }
             return null;
         }
 
         private async Task LoadBibleToCache()
         {
-            _logger.LogInformation("Carregando Bíblia...");
             _bibleCache = new List<BibleVerse>();
             if (!File.Exists(_bibleFilePath)) return;
             var lines = await File.ReadAllLinesAsync(_bibleFilePath);
@@ -129,10 +114,7 @@ Responda APENAS JSON: {{ ""encontrou"": true, ""referencia"": ""Livro Capítulo:
                 if (string.IsNullOrEmpty(trimmed) || trimmed.Contains("Bíblia Almeida Corrigida Fiel") || trimmed.Contains("Sociedade Bíblica")) continue;
                 var matchCap = Regex.Match(trimmed, @"^(.+)\s(\d+)$");
                 if (matchCap.Success) {
-                    var bookName = matchCap.Groups[1].Value.Trim();
-                    if (new[] {"Gênesis", "Êxodo", "Levítico", "Números", "Deuteronômio", "Josué", "Juízes", "Rute", "1 Samuel", "2 Samuel", "1 Reis", "2 Reis", "1 Crônicas", "2 Crônicas", "Esdras", "Neemias", "Ester", "Jó", "Salmos", "Provérbios", "Eclesiastes", "Cânticos", "Isaías", "Jeremias", "Lamentações", "Ezequiel", "Daniel", "Oséias", "Joel", "Amós", "Obadias", "Jonas", "Miquéias", "Naum", "Habacuque", "Sofonias", "Ageu", "Zacarias", "Malaquias", "Mateus", "Marcos", "Lucas", "João", "Atos", "Romanos", "1 Coríntios", "2 Coríntios", "Gálatas", "Efésios", "Filipenses", "Colossenses", "1 Tessalonicenses", "2 Tessalonicenses", "1 Timóteo", "2 Timóteo", "Tito", "Filemom", "Hebreus", "Tiago", "1 Pedro", "2 Pedro", "1 João", "2 João", "3 João", "Judas", "Apocalipse"}.Any(l => l.Equals(bookName, StringComparison.OrdinalIgnoreCase))) {
-                        currentBook = bookName; currentChapter = matchCap.Groups[2].Value; continue;
-                    }
+                    currentBook = matchCap.Groups[1].Value.Trim(); currentChapter = matchCap.Groups[2].Value; continue;
                 }
                 var firstSpace = trimmed.IndexOf(' ');
                 if (firstSpace > 0 && int.TryParse(trimmed.Substring(0, firstSpace), out var vNum)) {
@@ -147,10 +129,7 @@ Responda APENAS JSON: {{ ""encontrou"": true, ""referencia"": ""Livro Capítulo:
             if (currentVerse != null) _bibleCache.Add(currentVerse);
         }
 
-        private BibleVerse? FindExactMatch(string query) {
-            var cleanQuery = CleanString(query);
-            return _bibleCache?.FirstOrDefault(v => v.CleanText.Contains(cleanQuery) || cleanQuery.Contains(v.CleanText));
-        }
+        private BibleVerse? FindExactMatch(string query) => _bibleCache?.FirstOrDefault(v => v.CleanText.Contains(CleanString(query)));
 
         private List<BibleVerse> FindBestMatches(string query, int count) {
             var queryWords = CleanString(query).Split(' ').Where(w => w.Length > 3).ToList();

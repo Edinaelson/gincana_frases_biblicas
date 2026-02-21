@@ -30,17 +30,22 @@ namespace GincanaPassagensBiblicas
                 options.UseSqlite($"Data Source={dbPath}"));
             // Register AI service (Switch between Gemini and Ollama here)
             // To use Gemini, uncomment the block below and comment out the Ollama block.
-            /*
+            // 1. Google Gemini Service
             builder.Services.AddHttpClient<GincanaPassagensBiblicas.Services.IGeminiService, GincanaPassagensBiblicas.Services.GeminiService>(client =>
             {
                 client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/");
             });
-            */
 
-            // To use local Llama (via Ollama), use this block:
-            builder.Services.AddHttpClient<GincanaPassagensBiblicas.Services.IGeminiService, GincanaPassagensBiblicas.Services.OllamaService>(client =>
+            // 2. Ollama Service (Local)
+            builder.Services.AddHttpClient<GincanaPassagensBiblicas.Services.IOllamaService, GincanaPassagensBiblicas.Services.OllamaService>(client =>
             {
                 client.BaseAddress = new Uri("http://localhost:11434/");
+            });
+
+            // 3. Groq Service (Cloud Ultra-fast)
+            builder.Services.AddHttpClient<GincanaPassagensBiblicas.Services.IGroqService, GincanaPassagensBiblicas.Services.GroqService>(client =>
+            {
+                client.BaseAddress = new Uri("https://api.groq.com/openai/");
             });
 
             var app = builder.Build();
